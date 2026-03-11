@@ -481,87 +481,95 @@ str(sensorimotor_porparticipante$Max_strength.action)
 sensorimotor_porparticipante$Max_strength.action <- as.factor(sensorimotor_porparticipante$Max_strength.action)
 
 # Modelo ordinal para puntuaciones por participante
-fuerza_motora <- clmm(Max_strength.action ~ GRUPO * CONDICION + (1|ID) + (1|PALABRA),
+fuerza_motora <- clmm(Max_strength.action ~ GRUPO * CONDICION + (1|ID),
                       data = sensorimotor_porparticipante)
 summary(fuerza_motora)
 
 check_model(fuerza_motora) # Hay demasiada colinealidad, lo que puede alterar los coeficientes
 
-# 2. Modelo con promedios de las puntuaciones
-# Revisar distribución
-hist(normas$Max_strength.action) # Hay un ligero sesgo positivo
+# Pruebas con otros modelos
 
-descdist(normas$Max_strength.action, discrete = FALSE, boot = 200)
-# Está cerca de una distribución normal
+fuerza_motor <- polr(Max_strength.action ~ GRUPO * CONDICION,
+                      data = sensorimotor_porparticipante)
+summary(fuerza_motor)
 
-# 2.1 Modelo asumiendo distribución normal
-fuerza_motora2 <- lm(Max_strength.action ~ GRUPO * CONDICION,
-                     data = normas)
+check_model(fuerza_motor)
 
-summary(fuerza_motora2)
-check_model(fuerza_motora2) # Se viola el supuesto de homogeneidad
+AIC(fuerza_motor, fuerza_motora)
 
-# 2.2 Modelo con distribución Gamma y link logarítmico
-fuerza_motora3 <- glm(Max_strength.action ~ GRUPO * CONDICION, family = Gamma(link = "log"),
-                      data = normas)
+#Chi cuadrada
+clmm_nu <- clmm(Max_strength.action ~ 1 + (1|ID),
+                      data = sensorimotor_porparticipante)
 
-summary(fuerza_motora3)
-check_model(fuerza_motora3) # Los supuestos se siguen mejor
+polr_nu <- polr(Max_strength.action ~ 1,
+                     data = sensorimotor_porparticipante)
 
-hist(residuals(fuerza_motora2)) # Los residuos no son normales
-hist(residuals(fuerza_motora3))
+anova(clmm_nu, fuerza_motora, test = "Chisq")
 
-# Comparaciones para la condición
-posthoc_motor <- emmeans(fuerza_motora3, ~ CONDICION | GRUPO)
+anova(polr_nu, fuerza_motor, test = "Chisq")
 
-# Obtener contrastes con IC 95%
-contrastes_ci <- contrast(posthoc_motor, 
-                          method = "pairwise",
-                          adjust = "none",  # o "tukey" si prefieres
-                          infer = c(TRUE, TRUE))  # IC y tests
+# Revisar colinealidad ajustada (GVIF)
 
-# Ver con IC 95%
-summary(contrastes_ci, infer = TRUE)
+check_collinearity(fuerza_motora)
+
+performance(fuerza_motora) #R²
+
+#________________Análisis post hoc_________________
+# Medias estimadas en la escala del modelo (log-odds) para CONDICIÓN | GRUPO
+emm_cond <- emmeans(fuerza_motora, ~ CONDICION | GRUPO)
+
+# Comparaciones por pares (Positiva vs. Negativa) dentro de cada grupo
+pairs(emm_cond, adjust = "tukey")
+
+# Resumen completo
+dif_cond <- pairs(emm_cond, adjust = "tukey")
+
+summary(dif_cond, infer = c(TRUE, TRUE))
 
 # Ahora para fuerza perceptual____________________________________________________________
-# Usaré la distribución gamma
+# Usaré directamente un clmm
 hist(normas$Max_strength.perceptual)
 
-fuerza_perceptual <- glm(Max_strength.perceptual ~ GRUPO * CONDICION, family = Gamma(link = "log"),
-                         data = normas)
+# Convertir a factor la variable predictora
+sensorimotor_porparticipante$Max_strength.perceptual <- as.factor(sensorimotor_porparticipante$Max_strength.perceptual)
 
+# Modelo ordinal para puntuaciones por participante
+fuerza_perceptual <- clmm(Max_strength.perceptual ~ GRUPO * CONDICION + (1|ID),
+                      data = sensorimotor_porparticipante)
 summary(fuerza_perceptual)
+
 check_model(fuerza_perceptual)
 
+# Chisq
+
+clmm_nupe <- clmm(Max_strength.perceptual ~ 1 + (1|ID),
+                data = sensorimotor_porparticipante)
+anova(clmm_nupe, fuerza_perceptual, test = "Chisq" )
+
+# Revisar colinealidad ajustada (GVIF)
+
+check_collinearity(fuerza_perceptual)
+
+performance(fuerza_perceptual) #R²
+
 # Comparaciones para la condición
-posthoc_perceptual <- emmeans(fuerza_perceptual, ~ CONDICION | GRUPO)
+# Medias estimadas en la escala del modelo (log-odds) para CONDICIÓN | GRUPO
+emm_cond2 <- emmeans(fuerza_perceptual, ~ CONDICION | GRUPO)
 
-# Obtener contrastes con IC 95%
-contrastes_cip <- contrast(posthoc_perceptual, 
-                           method = "pairwise",
-                           adjust = "none",  # o "tukey" si prefieres
-                           infer = c(TRUE, TRUE))  # IC y tests
+# Comparaciones por pares (Positiva vs. Negativa) dentro de cada grupo
+pairs(emm_cond2, adjust = "tukey")
 
-# Ver con IC 95%
-summary(contrastes_cip, infer = TRUE)
+# Resumen completo
+dif_cond2 <- pairs(emm_cond2, adjust = "tukey")
 
-# Graficar los promedios_____#
-
-ggplot(sensorimotor_porparticipante,
-       aes(x = GRUPO, y = as.numeric(Max_strength.action), 
-           fill = CONDICION)) +
-  stat_summary(fun = mean, geom = "bar", position = "dodge") +
-  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", 
-               position = position_dodge(0.9), width = 0.2) +
-  labs(title = "Fuerza motora y perceptual",
-       y = "Fuerza máxima (promedio)")
+summary(dif_cond2, infer = c(TRUE, TRUE))
 
 #-----------------------------------------------------------------------
 # MODELOS para analizar la distancia Minkowski
 #_______________________________________________________________________
 # 1. Distancia Minkowski en función del grupo y la condición
 
-hist(normas$Minkowski3.sensorimotor) # observar distribución
+hist(sensorimotor_porparticipante$Minkowski3.sensorimotor) # observar distribución
 
 descdist(normas$Minkowski3.sensorimotor,
          discrete = FALSE,               # La distribución parece normal
@@ -574,6 +582,7 @@ summary(minko)
 check_model(minko)
 
 hist(residuals(minko))
+shapiro.test(residuals(minko)) # Los residuos siguen una distribución normal
 
 # Comparaciones para la condición
 posthoc_minko <- emmeans(minko, ~ CONDICION | GRUPO)
@@ -603,7 +612,7 @@ summary(modelo_mixto)
 
 check_model(modelo_mixto)
 # Eligo este porque me da más información y la 
-# colinealidad de la interacción no es tan alta y es lo único significativo
+# colinealidad de la interacción es moderada
 
 performance(modelo_mixto) #R²
 
@@ -744,7 +753,7 @@ fuerza_mo_pl<- ggplot(sensorimotor_porparticipante,
     comparisons = list(c("Control", "Control")),  # Mismo grupo
     map_signif_level = TRUE,
     annotations = "*",
-    y_position = 4.05,
+    y_position = 4.8,
     tip_length = 0.02
   ) +
   geom_signif(
@@ -752,7 +761,7 @@ fuerza_mo_pl<- ggplot(sensorimotor_porparticipante,
     comparisons = list(c("Depresion", "Depresion")),
     map_signif_level = TRUE,
     annotations = "*",  
-    y_position = 4.05,
+    y_position = 4.8,
     tip_length = 0.02
   )
 
@@ -773,13 +782,13 @@ fuerza_pe_pl<- ggplot(sensorimotor_porparticipante,
     comparisons = list(c("Control", "Control")),  # Mismo grupo
     map_signif_level = TRUE,
     annotations = "*",
-    y_position = 4.05,
+    y_position = 4.8,
     tip_length = 0.02
   )
 
 fuerza_pe_pl
 
-library(cowplot) # Esto es por motivos de visualización (unir dos gráficas), es opcional.
+# library(cowplot) # Esto es por motivos de visualización (unir dos gráficas), es opcional.
 plot_grid(fuerza_mo_pl, fuerza_pe_pl,
           labels = c("A", "B"),
           label_size = 15,
